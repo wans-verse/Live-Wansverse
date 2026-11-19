@@ -1,0 +1,234 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Tulis source
+        run: |
+          mkdir -p /tmp/src
+          cat > /tmp/src/pubspec.yaml <<'PUBEOF'
+          name: livekita
+          description: Aplikasi live streaming sederhana dengan ZegoCloud.
+          publish_to: none
+          version: 1.0.0+1
+
+          environment:
+            sdk: ">=3.3.0 <4.0.0"
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            zego_uikit_prebuilt_live_streaming: ^3.0.0
+            zego_uikit_signaling_plugin: ^2.0.0
+
+          flutter:
+            uses-material-design: true
+          PUBEOF
+          cat > /tmp/src/main.dart <<'MAINEOF'
+          import 'dart:math';
+          import 'package:flutter/material.dart';
+          import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
+
+          // Diisi lewat --dart-define / GitHub Secrets (ZEGO_APP_ID, ZEGO_APP_SIGN)
+          const int kAppID = int.fromEnvironment('ZEGO_APP_ID');
+          const String kAppSign = String.fromEnvironment('ZEGO_APP_SIGN');
+
+          void main() => runApp(const App());
+
+          class App extends StatelessWidget {
+            const App({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              const ink = Color(0xFF0E0E10);
+              const gold = Color(0xFFD9B77E);
+              return MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'Livekita',
+                theme: ThemeData(
+                  useMaterial3: true,
+                  brightness: Brightness.dark,
+                  scaffoldBackgroundColor: ink,
+                  colorScheme: const ColorScheme.dark(
+                    primary: gold,
+                    onPrimary: ink,
+                    surface: Color(0xFF17171A),
+                  ),
+                  inputDecorationTheme: InputDecorationTheme(
+                    filled: true,
+                    fillColor: const Color(0xFF17171A),
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: gold, width: 1),
+                    ),
+                  ),
+                ),
+                home: const HomePage(),
+              );
+            }
+          }
+
+          class HomePage extends StatefulWidget {
+            const HomePage({super.key});
+            @override
+            State<HomePage> createState() => _HomePageState();
+          }
+
+          class _HomePageState extends State<HomePage> {
+            final _name = TextEditingController();
+            final _room = TextEditingController();
+            final String _userId = Random().nextInt(999999).toString();
+
+            void _go(bool host) {
+              if (_name.text.trim().isEmpty || _room.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Isi nama dan ID ruangan dulu')),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LivePage(
+                    userId: _userId,
+                    userName: _name.text.trim(),
+                    roomId: _room.text.trim(),
+                    isHost: host,
+                  ),
+                ),
+              );
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final gold = Theme.of(context).colorScheme.primary;
+              return Scaffold(
+                body: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('LIVEKITA',
+                            style: TextStyle(
+                                letterSpacing: 6,
+                                fontSize: 12,
+                                color: gold,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 14),
+                        const Text('Siaran langsung,\ntanpa ribet.',
+                            style: TextStyle(
+                                fontSize: 34, height: 1.15, fontWeight: FontWeight.w300)),
+                        const SizedBox(height: 40),
+                        TextField(
+                            controller: _name,
+                            decoration: const InputDecoration(labelText: 'Nama')),
+                        const SizedBox(height: 14),
+                        TextField(
+                            controller: _room,
+                            decoration: const InputDecoration(labelText: 'ID ruangan')),
+                        const SizedBox(height: 28),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14))),
+                            onPressed: () => _go(true),
+                            child: const Text('Mulai live',
+                                style: TextStyle(fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: gold.withOpacity(.5)),
+                                foregroundColor: gold,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14))),
+                            onPressed: () => _go(false),
+                            child: const Text('Tonton'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+
+          class LivePage extends StatelessWidget {
+            const LivePage({
+              super.key,
+              required this.userId,
+              required this.userName,
+              required this.roomId,
+              required this.isHost,
+            });
+
+            final String userId, userName, roomId;
+            final bool isHost;
+
+            @override
+            Widget build(BuildContext context) {
+              final config = isHost
+                  ? ZegoUIKitPrebuiltLiveStreamingConfig.host()
+                  : ZegoUIKitPrebuiltLiveStreamingConfig.audience();
+
+              return SafeArea(
+                child: ZegoUIKitPrebuiltLiveStreaming(
+                  appID: kAppID,
+                  appSign: kAppSign,
+                  userID: userId,
+                  userName: userName,
+                  liveID: roomId,
+                  config: config,
+                ),
+              );
+            }
+          }
+          MAINEOF
+
+      - name: Buat project
+        run: |
+          flutter create app --platforms=android --project-name livekita --org com.livekita
+          cp /tmp/src/pubspec.yaml app/pubspec.yaml
+          cp /tmp/src/main.dart app/lib/main.dart
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <application#' app/android/app/src/main/AndroidManifest.xml
+
+      - name: Build APK
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --dart-define=ZEGO_APP_ID=${{ secrets.ZEGO_APP_ID }} \
+            --dart-define=ZEGO_APP_SIGN=${{ secrets.ZEGO_APP_SIGN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: livekita-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
